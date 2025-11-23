@@ -35,7 +35,7 @@ For LLama-3,
 hf auth login
 ```
 
-And get access here: https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main
+And get access [here](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main)
 
 Optional environment variables:
 
@@ -118,10 +118,10 @@ uv run examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 3
 - Strict output format:
   - While acting, the assistant must answer with two lines only:
     - Action: code_interpreter
-    - Action Input: { "code": "<ONLY_FUNCTION>", "harness": "<KEPT_BY_US>" }
+    - Action Input: { "code": "\<ONLY_FUNCTION\>", "harness": "\<KEPT_BY_US\>" }
   - At the end, the assistant must produce:
     - Final Answer: ```python
-      <only the corrected function>
+      \<only the corrected function\>
       ```
   - We add validation: if Action Input is missing/invalid, we do not run the tool but return an Observation telling the model to resend a valid JSON payload.
 
