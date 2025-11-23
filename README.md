@@ -123,7 +123,7 @@ uv run examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 3
     - Final Answer:
 
 ```python
-\<only the corrected function\>
+<only the corrected function>
 ```
   - We add validation: if Action Input is missing/invalid, we do not run the tool but return an Observation telling the model to resend a valid JSON payload.
 
