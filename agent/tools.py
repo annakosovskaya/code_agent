@@ -7,6 +7,7 @@ import tempfile
 from typing import Any, Dict, Optional
 import textwrap
 
+from utils.code_postprocess import inject_main_for_testing, has_dunder_main
 
 def run_python_sandboxed(code: str, timeout: int = 8, harness: Optional[str] = None) -> Dict[str, Any]:
     # normalize inputs
@@ -18,16 +19,20 @@ def run_python_sandboxed(code: str, timeout: int = 8, harness: Optional[str] = N
         script = (code + "\n\n" + harness).rstrip() + "\n"
     else:
         script = (code + "\n").rstrip() + "\n"
+
+    # Ensure an entrypoint exists; if missing, inject one deterministically.
+    if not has_dunder_main(script):
+        if harness:
+            # Wrap the provided harness under an injected __main__ block
+            script = inject_main_for_testing(code, harness)
+        else:
+            # Minimal guard to satisfy execution; no-op body
+            script = inject_main_for_testing(code, "pass")
+
     # validate
     code = script
     if not code.strip():
         return {"ok": False, "error": "EMPTY_CODE", "hint": "Provide 'code' with a complete Python script."}
-    if "if __name__ == '__main__':" not in code:
-        return {
-            "ok": False,
-            "error": "MISSING_MAIN",
-            "hint": "Include an entry point: if __name__ == '__main__': ... with your tests/asserts. Or pass 'harness' so we assemble it for you."
-        }
     try:
         compile(code, "snippet.py", "exec")
     except SyntaxError as e:
@@ -67,7 +72,7 @@ def run_python_sandboxed(code: str, timeout: int = 8, harness: Optional[str] = N
 TOOLS = {
     "code_interpreter": {
         "fn": run_python_sandboxed,
-        "description": "Execute Python in a minimal sandbox. Args: code (str), timeout (int).",
+        "description": "Execute Python in a minimal sandbox. Args: code (str), harness (optional str), timeout (int).",
     }
 }
 

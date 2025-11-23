@@ -1,4 +1,4 @@
-## Minimal ReAct Agent (LangGraph + Qwen2.5-Coder) for Buggy Python Fixing
+# Minimal ReAct Agent (LangGraph + Qwen2.5-Coder) for Buggy Python Fixing
 
 The goal is to build an agent that automatically fixes buggy Python code and evaluates the correctness of the fix (locally running tests and reporting a metric over many tasks).
 
@@ -58,7 +58,7 @@ export MODEL_NAME="Qwen/Qwen2.5-0.5B-Instruct"
 ### Run the minimal demo
 
 ```bash
-python examples/demo_minimal.py --index 0 --max-iterations 6
+uv run examples/demo_minimal.py --index 0 --max-iterations 6
 ```
 
 What this demo does:
@@ -76,7 +76,7 @@ Notes:
 The agent sees ONLY the example test; we score on the hidden test.
 
 ```bash
-python examples/eval_pass1.py --num 10 --max-iterations 15
+uv run examples/eval_pass1.py --num 10 --max-iterations 15
 ```
 
 What this evaluation does:
@@ -91,9 +91,9 @@ This prints per-item results and a final JSON line with `pass@1`.
 Few-shot control (k = number of few‑shot examples; defaults to 3 and excluded from scoring):
 ```bash
 # disable few-shot
-python examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 0
+uv run examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 0
 # use N few-shot examples
-python examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 3
+uv run examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 3
 ```
 
 ### Metric: pass@1
@@ -127,9 +127,12 @@ python examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 3
 
 - Tooling (sandboxed Python):
   - `code_interpreter` executes Python in a subprocess with `-I -S` and resource limits. Args: `code` (str), `harness` (optional str), `timeout` (optional int).
-  - Input normalization: we dedent and strip the code, and we can compose the final script as “function + harness”.
-  - Early checks: empty code, missing `if __name__ == '__main__':`, or SyntaxError are detected up front and returned as Observations with actionable hints instead of failing silently.
-  - The harness contains tests/asserts and the entry point; the model sends only the function.
+  - Input normalization: we dedent and strip inputs and compose the final script as “function + harness” when provided.
+  - Early checks: empty code and SyntaxError are detected up front and returned as Observations with actionable hints.
+  - Auto entry point: if the final script does not contain a top‑level `if __name__ == '__main__':`, we automatically inject a minimal runner.
+    - If `harness` is provided, it is wrapped under the injected `__main__` guard.
+    - If `harness` is absent, we inject a no‑op main so the script can still execute deterministically.
+  - The harness contains tests/asserts; an explicit entry point in the harness is optional (auto‑added if missing). The model sends only the function.
 
 - Final verification before stopping:
   - When the model outputs “Final Answer”, we extract the function from the code fence and run it with the same harness that was provided in the hint.
@@ -148,6 +151,16 @@ python examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 3
   - The agent only sees example_test (and may invent extra asserts to probe edge cases).
   - After the agent finishes, we extract the corrected function and run the hidden test `test` in isolation to score pass@1.
 
+### Auto-injected __main__ and code post‑processing
+
+- We provide small helpers in `utils/code_postprocess.py`:
+  - `has_dunder_main(code)`: detect a top‑level `if __name__ == "__main__":`.
+  - `inject_main_for_testing(code, main_body)`: add a minimal `__main__` block if missing (used by the tool to ensure execution).
+  - `strip_injected_main(code)`: remove our injected block (marker‑based) to keep final answers clean.
+- Behavior:
+  - During tool execution, the runner is injected automatically when missing.
+  - Final answers returned by the agent contain only the corrected function (no `__main__` block). You remain free to run your own evaluation harness to collect metrics.
+
 ### Files
 - `agent/llm.py` – LLMChat wrapper (generic HF Transformers loader with optional HF token)
 - `agent/tools.py` – sandboxed `code_interpreter` tool and registry
@@ -155,7 +168,8 @@ python examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 3
 - `examples/demo_minimal.py` – dataset loader + demo runner
 - `examples/eval_pass1.py` – pass@1 evaluator (uses example test for prompting, hidden test for scoring)
 - `minimal_agent.py` – thin wrapper that forwards to `examples/demo_minimal.py`
-- `requirements.txt` – minimal dependencies.
+- `utils/code_postprocess.py` – helpers for injecting/stripping `__main__` in generated scripts
+- `pyproject.toml`, `uv.lock` – dependencies and lockfile (managed via uv)
 
 ### Notes
 - The sandbox is best-effort (`python -I -S` and a temp directory). Do not run untrusted code.
@@ -165,4 +179,8 @@ python examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 3
 - max_time: keep moderate to avoid long stalls; when running on CPU, we required max_time = 1200 min for code generation, otherwise the code wasn't generated fully. If you see truncated replies, raise the `max_time` values inside `agent/llm.py` (the dynamic `gen_kwargs` block in `LLMChat.invoke`).
 - min_new_tokens: we set a lower bound (e.g., 64 for short steps, 128 for code steps) to reduce ultra‑short, early‑stopped replies.
 - Other controls: temperature≈0.2 with sampling enabled, repetition penalty and no‑repeat n‑gram to reduce “bolтовня” and encourage the strict format.
+
+## Current results
+
+In the current form, agent works well as an assistant to locate the root cause and suggest a fix, but it does not reliably complete the full “generate → test → confirm” loop autonomously. The agent usually identifies the bug correctly and proposes a reasonable fix. Although, during run it often fails on formatting ussues and new fixes introduce new errors.
 

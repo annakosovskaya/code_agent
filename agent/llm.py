@@ -84,10 +84,10 @@ class LLMChat:
         gen_kwargs = {}
         if wants_action_input:
             gen_kwargs["max_new_tokens"] = max(self.generation_config.max_new_tokens or 0, 2048)
-            gen_kwargs["max_time"] = 360
+            gen_kwargs["max_time"] = 800
             gen_kwargs["min_new_tokens"] = 128
         else:
-            gen_kwargs["max_time"] = 120
+            gen_kwargs["max_time"] = 180
             gen_kwargs["min_new_tokens"] = 64
         output_ids = self.model.generate(
             **inputs,
