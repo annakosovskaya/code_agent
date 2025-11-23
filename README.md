@@ -44,7 +44,7 @@ export MODEL_NAME="Qwen/Qwen2.5-Coder-7B-Instruct"  # default
 export MODEL_NAME="Qwen/Qwen2.5-0.5B-Instruct"
 ```
 
-### Dataset
+### 🐙 Dataset
 - We use the HumanEvalFix subset of HumanEvalPack ([HumanEvalPack](https://huggingface.co/datasets/bigcode/humanevalpack)).
 - The dataset provides:
   - instruction: task description, including an example test inline.
@@ -98,7 +98,7 @@ uv run examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 3
 
 ### Metric: pass@1
 - Definition: share of tasks for which the first (and only) final solution produced by the agent passes the hidden tests.
-- Prompting setup: the agent receives `instruction`, `buggy_solution`, and ONLY `example_test`. Hidden `test` is withheld for scoring. Few‑shot examples (k) may be provided for in‑context learning but are excluded from the evaluation pool.
+- Prompting setup: the agent receives `instruction`, `buggy_solution`, and ONLY `example_test`. The hidden `test` is withheld for scoring. Few‑shot examples (k) may be provided for in‑context learning but are excluded from the evaluation pool.
 - Procedure:
   1) Run the ReAct agent on each selected item (bounded by `--max-iterations`).
   2) Extract the corrected function from the agent’s “Final Answer” code fence; if missing, fall back to the last `Action Input.code` and strip any harness.
@@ -106,14 +106,14 @@ uv run examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 3
   4) Execute in the sandbox (timeout enforced).
   5) Mark the item as passed iff the process succeeds (`ok=True` and `exit_code==0`).
 - Output: per‑item JSON lines `{"index": <ds_idx>, "pass": true|false}` and a final summary `{"metric":"pass@1","num":N,"successes":S,"value":S/N}`.
-- Reproducibility: set `MODEL_NAME` and keep `--few-shot-k` constant. Sampling is enabled with temperature≈0.2 by default; to reduce variance you can set temperature to 0 (greedy) in `agent/llm.py`.
+- Reproducibility: set `MODEL_NAME` and keep `--few-shot-k` constant. Sampling is enabled with temperature≈0.2 by default; to reduce variance, you can set temperature to 0 (greedy) in `agent/llm.py`.
 
 ### Approach (how it works)
 
 - ReAct loop (LangGraph):
   - The agent runs a ReAct cycle with two nodes: LLM (reasoning/decision) and tool (execution).
   - A small “start” router checks if a helper hint is present (“Action Input: …”) and, if so, injects an assistant Action and immediately routes to the tool on the first step to avoid long initial “thinking”.
-  - Routing logic: if the last assistant message contains Final Answer → we first try to verify it by running the code with the harness; if verification passes, stop; otherwise feed the Observation back and continue. If it contains a valid Action for a known tool → run the tool; otherwise go back to LLM.
+  - Routing logic: if the last assistant message contains Final Answer → we first try to verify it by running the code with the harness; if verification passes, stop; otherwise feed the Observation back and continue. If it contains a valid Action for a known tool → run the tool; otherwise, go back to LLM.
 
 - Strict output format:
   - While acting, the assistant must answer with two lines only:
@@ -180,9 +180,9 @@ uv run examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 3
 - max_new_tokens: chosen to let the model finish full outputs. We use a dynamic budget: ~1024 tokens for short “thinking” steps and up to ~2048 tokens when an Action Input with code is expected.
 - max_time: keep moderate to avoid long stalls; when running on CPU, we required max_time = 1200 min for code generation, otherwise the code wasn't generated fully. If you see truncated replies, raise the `max_time` values inside `agent/llm.py` (the dynamic `gen_kwargs` block in `LLMChat.invoke`).
 - min_new_tokens: we set a lower bound (e.g., 64 for short steps, 128 for code steps) to reduce ultra‑short, early‑stopped replies.
-- Other controls: temperature≈0.2 with sampling enabled, repetition penalty and no‑repeat n‑gram to reduce “bolтовня” and encourage the strict format.
+- Other controls: temperature≈0.2 with sampling enabled, repetition penalty, and no‑repeat n‑gram to encourage the strict format.
 
 ## Current results
 
-In the current form, agent works well as an assistant to locate the root cause and suggest a fix, but it does not reliably complete the full “generate → test → confirm” loop autonomously. The agent usually identifies the bug correctly and proposes a reasonable fix. Although, during run it often fails on formatting ussues and new fixes introduce new errors.
+In the current form, the agent works well as an assistant to locate the root cause and suggest a fix, but it does not reliably complete the full “generate → test → confirm” loop autonomously. The agent usually identifies the bug correctly and proposes a reasonable fix. Although during run it often fails on formatting issues and new fixes introduce new errors. Using a more advanced model should make the performance better.
 
