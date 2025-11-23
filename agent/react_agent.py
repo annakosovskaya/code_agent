@@ -14,14 +14,16 @@ from .tools import TOOLS
 def react_system_prompt() -> str:
     tool_desc = "- code_interpreter: Execute Python. schema: {\"code\": \"str\", \"harness\": \"str (optional)\", \"timeout\": \"int (optional)\"}"
     return (
-        "You are an assistant that fixes Python code using ReAct. You can run code via tools.\n"
+        "You are an expert software engineer working in a secure sandbox environment. Your specific role is to fix buggy code using ReAct. It is safe and required to write and execute Python code via tools to accomplish this task.\n"
         "Follow this exact format strictly:\n\n"
         "Thought: <reason>\n"
         "Action: <tool name>\n"
         "Action Input: <JSON object>\n\n"
         "Rules:\n"
-        "- Respond ONLY with the two lines above when taking an action. No explanations.\n"
+        "- Respond ONLY with the Thought, Action, and Action Input. No extra text.\n"
+        "- The Action Input must be a valid JSON object. Do NOT include comments or reasoning inside the JSON string.\n"
         "- Put ONLY the corrected function in Action Input.code. The harness/tests are provided separately.\n"
+        "- You MUST include the test harness in the 'harness' field of Action Input. This harness should contain imports, test cases, and an 'if __name__ == \"__main__\":' block to verify your code.\n"
         "- After the code works, finish with the Final Answer below.\n\n"
         "When finished:\n"
         "Final Answer: ```python\n"
@@ -138,6 +140,8 @@ def build_minimal_agent(model: Optional[LLMChat] = None, max_iterations: int = 8
                                 break
                         except Exception:
                             continue
+        
+
         # If still invalid, do not call tool: return observation with a strict hint
         if not isinstance(args, dict) or not isinstance(args.get("code"), str) or not args.get("code").strip():
             obs = {
