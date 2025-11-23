@@ -2,12 +2,32 @@
 
 The goal is to build an agent that automatically fixes buggy Python code and evaluates the correctness of the fix (locally running tests and reporting a metric over many tasks).
 
-This repo provides a ReAct-style agent with a sandboxed Python tool. You can (a) run a minimal demo on a single task from `bigcode/humanevalpack`, and (b) evaluate pass@1 across many tasks with dataset-driven few‑shot (few‑shot items are excluded from scoring). The agent sends only the corrected function; we automatically add a small runner (with `if __name__ == '__main__'` and the tests) to execute it. See details about metrics, datasets, and approach below.
+This repo provides a ReAct-style agent with a sandboxed Python tool. You can (a) run a minimal demo on a single task from `bigcode/humanevalpack`, and (b) evaluate pass@1 across many tasks with dataset-driven few‑shot (few‑shot items are excluded from scoring). The agent sends only the corrected function; we automatically add a small runner (with `if __name__ == '__main__':` and the tests) to execute it. See details about metrics, datasets, and approach below.
 
-### Install
+## Installation
+
+This project uses [uv](https://github.com/astral-sh/uv) for dependency management.
+
+1.  **Install uv** (if not already installed):
+
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
+
+2.  **Install dependencies**:
+
+    ```bash
+    uv sync
+    ```
+
+    This will create a virtual environment and install all dependencies specified in `pyproject.toml` and `uv.lock`.
+
+## Usage
+
+To run the agent:
 
 ```bash
-pip install -r requirements.txt
+uv run minimal_agent.py --index 0 --max-iterations 6
 ```
 
 For LLama-3, 
@@ -142,7 +162,7 @@ python examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 3
 
 ### Hyperparameters
 - max_new_tokens: chosen to let the model finish full outputs. We use a dynamic budget: ~1024 tokens for short “thinking” steps and up to ~2048 tokens when an Action Input with code is expected.
-- max_time: keep moderate to avoid long stalls; since we ran the code on slower hardware (MPS laptop), we had to increase these timeouts to let the model complete an Action Input or Final Answer. If you see truncated replies, raise the `max_time` values inside `agent/llm.py` (the dynamic `gen_kwargs` block in `LLMChat.invoke`).
+- max_time: keep moderate to avoid long stalls; when running on CPU, we required max_time = 1200 min for code generation, otherwise the code wasn't generated fully. If you see truncated replies, raise the `max_time` values inside `agent/llm.py` (the dynamic `gen_kwargs` block in `LLMChat.invoke`).
 - min_new_tokens: we set a lower bound (e.g., 64 for short steps, 128 for code steps) to reduce ultra‑short, early‑stopped replies.
 - Other controls: temperature≈0.2 with sampling enabled, repetition penalty and no‑repeat n‑gram to reduce “bolтовня” and encourage the strict format.
 

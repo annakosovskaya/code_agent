@@ -1,0 +1,16 @@
+[project]
+name = "code-agent"
+version = "0.1.0"
+description = "AI agent to fix bugs in Python code"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "accelerate>=0.34.0",
+    "datasets>=2.20.0",
+    "langgraph>=0.2.30",
+    "psutil>=6.0.0",
+    "pyyaml>=6.0.2",
+    "sentencepiece>=0.2.0",
+    "tokenizers>=0.20.0",
+    "transformers>=4.45.0",
+]
