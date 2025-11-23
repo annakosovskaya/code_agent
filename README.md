@@ -24,12 +24,6 @@ This project uses [uv](https://github.com/astral-sh/uv) for dependency managemen
 
 ## Usage
 
-To run the agent:
-
-```bash
-uv run minimal_agent.py --index 0 --max-iterations 6
-```
-
 For LLama-3, 
 ```bash
 hf auth login
