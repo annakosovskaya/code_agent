@@ -16,19 +16,19 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from agent.react_agent import build_minimal_agent, parse_react
-from agent.llm import ChatMessage
+from agent.llm import ChatMessage, LLMChat
 from agent.tools import run_python_sandboxed
 
 
-def build_eval_prompt(few_shot_prefix: str, docstring: str, buggy_solution: str, example_test: str) -> str:
+def build_eval_prompt(few_shot_prefix: str, instruction: str, buggy_solution: str, example_test: str) -> str:
     header = (
         "You will fix a buggy Python solution.\n"
         "You are given ONLY an example test to guide your fix. Do NOT assume hidden tests.\n\n"
     )
     few_shot_block = (few_shot_prefix + "\n\n") if few_shot_prefix else ""
     task_block = (
-        "Docstring (task description):\n"
-        f"{docstring}\n\n"
+        "Instruction (task description):\n"
+        f"{instruction}\n\n"
         "Buggy solution (Python code):\n"
         "```python\n"
         f"{buggy_solution}\n"
@@ -90,18 +90,18 @@ def assemble_hidden_eval_script(solution_code: str, hidden_test: str) -> str:
     )
 
 
-def evaluate_single(dataset, index: int, few_shot_prefix: str, max_iterations: int = 8) -> Tuple[bool, List[ChatMessage], str]:
-    subset = dataset.select_columns(["buggy_solution", "test", "example_test", "docstring"])
+def evaluate_single(dataset, index: int, few_shot_prefix: str, model: LLMChat, max_iterations: int = 8) -> Tuple[bool, List[ChatMessage], str]:
+    subset = dataset.select_columns(["buggy_solution", "test", "example_test", "instruction"])
     row = subset[index]
 
     buggy_solution = row["buggy_solution"]
     hidden_test = row["test"]
     example_test = row["example_test"]
-    docstring = row["docstring"]
+    instruction = row["instruction"]
 
-    app = build_minimal_agent(max_iterations=max_iterations)
+    app = build_minimal_agent(model=model, max_iterations=max_iterations)
 
-    user_task = build_eval_prompt(few_shot_prefix, docstring, buggy_solution, example_test)
+    user_task = build_eval_prompt(few_shot_prefix, instruction, buggy_solution, example_test)
     # Skeleton to encourage the agent to place optional extra tests
     indented_example = example_test.replace("\n", "\n    ")
     hint_script = (
@@ -153,11 +153,11 @@ def main() -> None:
         if not correct:
             continue
         buggy = row.get("buggy_solution") or ""
-        doc = row.get("docstring") or ""
+        doc = row.get("instruction") or ""
         ex_test = row.get("example_test") or ""
         main_test = row.get("test") or ""
         part = (
-            f"Docstring:\n{doc}\n\n"
+            f"Instruction:\n{doc}\n\n"
             "Buggy code:\n```python\n" + buggy + "\n```\n"
             "Example test:\n```python\n" + ex_test + "\n```\n"
             "Main test:\n```python\n" + main_test + "\n```\n"
@@ -174,10 +174,12 @@ def main() -> None:
     eval_indices = [i for i in range(len(full)) if i not in exclude][: args.num]
 
     total = len(eval_indices)
+    # Build a single LLM instance and reuse across items to avoid reloading the model
+    shared_llm = LLMChat()
     successes = 0
     for j, ds_idx in enumerate(eval_indices, start=1):
         print(f"[eval] ===== Item {j}/{total} (dataset idx {ds_idx}) =====", flush=True)
-        ok, _, _ = evaluate_single(full, ds_idx, few_shot_prefix=few_shot_prefix, max_iterations=args.max_iterations)
+        ok, _, _ = evaluate_single(full, ds_idx, few_shot_prefix=few_shot_prefix, model=shared_llm, max_iterations=args.max_iterations)
         successes += 1 if ok else 0
         print(json.dumps({"index": ds_idx, "pass": ok}, ensure_ascii=False))
     pass_at_1 = successes / total if total > 0 else 0.0

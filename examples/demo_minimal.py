@@ -32,98 +32,63 @@ def assemble_test_script(buggy_solution: str, example_test: str, test: str) -> s
     )
 
 
-def build_few_shot_prefix() -> str:
-    return (
-        "Below are three few-shot examples of fixing buggy Python code using tests.\n\n"
-        "Example 1\n"
-        "Docstring: Return the sum of two integers.\n"
-        "Buggy code:\n"
-        "```python\n"
-        "def add(a, b):\n"
-        "    return a - b  # bug: subtraction instead of addition\n"
-        "```\n"
-        "Example test:\n"
-        "```python\n"
-        "assert add(2, 3) == 5\n"
-        "```\n"
-        "Main test:\n"
-        "```python\n"
-        "assert add(-1, 1) == 0\n"
-        "assert add(10, 5) == 15\n"
-        "```\n"
-        "Correct code:\n"
-        "```python\n"
-        "def add(a, b):\n"
-        "    return a + b\n"
-        "```\n\n"
-        "Example 2\n"
-        "Docstring: Reverse a string.\n"
-        "Buggy code:\n"
-        "```python\n"
-        "def reverse_string(s: str) -> str:\n"
-        "    return ''.join(sorted(s))  # bug: sorts instead of reversing\n"
-        "```\n"
-        "Example test:\n"
-        "```python\n"
-        "assert reverse_string('abc') == 'cba'\n"
-        "```\n"
-        "Main test:\n"
-        "```python\n"
-        "assert reverse_string('racecar') == 'racecar'\n"
-        "assert reverse_string('abcd') == 'dcba'\n"
-        "```\n"
-        "Correct code:\n"
-        "```python\n"
-        "def reverse_string(s: str) -> str:\n"
-        "    return s[::-1]\n"
-        "```\n\n"
-        "Example 3\n"
-        "Docstring: Return True if n is a prime number, else False.\n"
-        "Buggy code:\n"
-        "```python\n"
-        "def is_prime(n: int) -> bool:\n"
-        "    if n < 2:\n"
-        "        return True  # bug: 0 and 1 are not prime\n"
-        "    for i in range(2, n):\n"
-        "        if n % i == 0:\n"
-        "            return False\n"
-        "    return True\n"
-        "```\n"
-        "Example test:\n"
-        "```python\n"
-        "assert is_prime(7) is True\n"
-        "```\n"
-        "Main test:\n"
-        "```python\n"
-        "assert is_prime(1) is False\n"
-        "assert is_prime(2) is True\n"
-        "assert is_prime(9) is False\n"
-        "```\n"
-        "Correct code:\n"
-        "```python\n"
-        "def is_prime(n: int) -> bool:\n"
-        "    if n < 2:\n"
-        "        return False\n"
-        "    i = 2\n"
-        "    while i * i <= n:\n"
-        "        if n % i == 0:\n"
-        "            return False\n"
-        "        i += 1\n"
-        "    return True\n"
-        "```\n"
-    )
+def build_few_shot_prefix(ds, exclude_index: int, k: int = 3) -> str:
+    parts: List[str] = []
+    taken = 0
+    # ensure we have needed columns
+    columns = set(ds.column_names)
+    need = {"buggy_solution", "example_test", "test", "instruction", "canonical_solution"}
+    if not need.issubset(columns):
+        ds = ds.select_columns(list(need.intersection(columns)))
+    for idx in range(len(ds)):
+        if idx == exclude_index:
+            continue
+        row = ds[idx]
+        correct = row.get("canonical_solution")
+        buggy = row.get("buggy_solution")
+        ex_test = row.get("example_test")
+        main_test = row.get("test")
+        instr = row.get("instruction")
+        if not (isinstance(correct, str) and correct.strip() and isinstance(buggy, str) and isinstance(ex_test, str) and isinstance(main_test, str) and isinstance(instr, str)):
+            continue
+        parts.append(
+            "Instruction:\n"
+            f"{instr}\n\n"
+            "Buggy code:\n"
+            "```python\n"
+            f"{buggy}\n"
+            "```\n"
+            "Example test:\n"
+            "```python\n"
+            f"{ex_test}\n"
+            "```\n"
+            "Main test:\n"
+            "```python\n"
+            f"{main_test}\n"
+            "```\n"
+            "Correct code:\n"
+            "```python\n"
+            f"{correct}\n"
+            "```\n"
+        )
+        taken += 1
+        if taken >= k:
+            break
+    if not parts:
+        return ""
+    return "Below are few-shot examples from the dataset:\n\n" + "\n\n".join(parts)
 
 
 def run_demo(index: int, max_iterations: int) -> List[ChatMessage]:
     print("[demo] Loading dataset...", flush=True)
     dataset = load_dataset("bigcode/humanevalpack", split="test")
-    subset = dataset.select_columns(["buggy_solution", "test", "example_test", "docstring"])
+    subset = dataset.select_columns(["buggy_solution", "test", "example_test", "instruction"])
     row = subset[index]
 
     code = row["buggy_solution"]
     example_test = row["example_test"]
     test = row["test"]
-    docstring = row["docstring"]
+    instruction = row["instruction"]
 
     print(f"[demo] Example #{index} loaded.", flush=True)
     print("[demo] Building agent...", flush=True)
@@ -131,8 +96,8 @@ def run_demo(index: int, max_iterations: int) -> List[ChatMessage]:
 
     user_task = (
         "You will fix a buggy Python solution.\n"
-        "Here is the docstring describing the task:\n"
-        f"{docstring}\n\n"
+        "Here is the instruction describing the task:\n"
+        f"{instruction}\n\n"
         "Here is the current buggy solution (as Python code):\n"
         "```python\n"
         f"{code}\n"
@@ -152,14 +117,13 @@ def run_demo(index: int, max_iterations: int) -> List[ChatMessage]:
         "When you change the code, re-run the tests (including your extra tests if any). Finish with 'Final Answer' summarizing the fix."
     )
 
-    # Provide a skeleton with a placeholder for extra tests
+    # Provide a skeleton (harness) with example_test only to reduce length. Ask model to send only the function in code.
+    indented_example = example_test.replace("\n", "\n        ")
     skeleton = (
-        f"{code}\n\n"
         "if __name__ == '__main__':\n"
         "    try:\n"
-        "        # Provided tests\n"
-        f"        {example_test.replace('\\n', '\\n        ')}\n"
-        f"        {test.replace('\\n', '\\n        ')}\n"
+        "        # Provided tests (example only on first run)\n"
+        f"        {indented_example}\n"
         "        # Your additional tests (optional):\n"
         "        # e.g., assert <func>(...) == ...\n"
         "        print('ALL_TESTS_PASSED')\n"
@@ -168,12 +132,18 @@ def run_demo(index: int, max_iterations: int) -> List[ChatMessage]:
         "        raise\n"
     )
 
+    # Build dataset-driven few-shot prefix excluding current item
+    try:
+        ds_full = load_dataset("bigcode/humanevalpack", split="test")
+        fewshot = build_few_shot_prefix(ds_full, exclude_index=index, k=3)
+    except Exception:
+        fewshot = ""
     inputs = {
         "messages": [
-            {"role": "user", "content": build_few_shot_prefix()},
+            *(([{"role": "user", "content": fewshot}] ) if fewshot else []),
             {"role": "user", "content": user_task},
-            {"role": "user", "content": "Helper: To run tests, call code_interpreter with this JSON:"},
-            {"role": "user", "content": f"Action: code_interpreter\nAction Input: {json.dumps({'code': skeleton})}"},
+            {"role": "user", "content": "Helper: Send only the corrected function in 'code'. The harness will be provided separately."},
+            {"role": "user", "content": f"Action: code_interpreter\nAction Input: {json.dumps({'code': '<PUT_ONLY_FUNCTION_HERE>', 'harness': skeleton})}"},
         ],
         "max_iterations": max_iterations,
     }
