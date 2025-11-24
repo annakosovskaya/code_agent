@@ -22,21 +22,19 @@ This project uses [uv](https://github.com/astral-sh/uv) for dependency managemen
 
     This will create a virtual environment and install all dependencies specified in `pyproject.toml` and `uv.lock`.
 
-## Usage
-
-For LLama-3, 
-```bash
-hf auth login
-```
-
-And get access [here](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main).
-
-Optional environment variables:
+3.  **Optional environment variables**:
 
 ```bash
 export MODEL_NAME="Qwen/Qwen2.5-Coder-7B-Instruct"  # default 
 export MODEL_NAME="Qwen/Qwen2.5-0.5B-Instruct"
 ```
+
+For gated models, 
+```bash
+hf auth login
+```
+
+And get access [here](https://huggingface.co/meta-llama/Llama-3.2-1B-Instruct/tree/main) (link for Llama-3).
 
 ### 🐙 Dataset
 - We use the HumanEvalFix subset of HumanEvalPack ([HumanEvalPack](https://huggingface.co/datasets/bigcode/humanevalpack)).
@@ -114,11 +112,7 @@ uv run examples/eval_pass1.py --num 10 --max-iterations 12 --few-shot-k 3
     - Action: code_interpreter
     - Action Input: { "code": "\<ONLY_FUNCTION\>", "harness": "\<KEPT_BY_US\>" }
   - At the end, the assistant must produce:
-    - Final Answer:
-
-```python
-<only the corrected function>
-```
+    - Final Answer: \<only the corrected function\>
   - We add validation: if Action Input is missing/invalid, we do not run the tool but return an Observation telling the model to resend a valid JSON payload.
 
 - Tooling (sandboxed Python):
